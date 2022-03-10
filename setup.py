@@ -10,9 +10,10 @@ extras["all"] = extras["rendering"]
 setup(
     name='sumo-rl',
     version='1.1',
-    packages=['sumo_rl'],
+    packages=find_packages(),
     install_requires=REQUIRED,
     extras_require=extras,
+    include_package_data=True,
     author='LucasAlegre',
     author_email='lucasnale@gmail.com',
     url='https://github.com/LucasAlegre/sumo-rl',

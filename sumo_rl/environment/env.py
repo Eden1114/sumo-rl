@@ -2,7 +2,6 @@ import os
 import sys
 from pathlib import Path
 from typing import Optional, Union, Tuple
-import sumo_rl
 if 'SUMO_HOME' in os.environ:
     tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
     sys.path.append(tools)

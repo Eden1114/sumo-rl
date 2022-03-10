@@ -1,0 +1,3 @@
+recursive-include nets/* *.xml *.sumocfg *.pdf
+recursive-include nets/RESCO/* *.xml *.sumocfg *.pdf
+
