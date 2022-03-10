@@ -1,6 +1,6 @@
 import os
 import sumo_rl
-from sumo_rl import env, parallel_env
+from .env import env, parallel_env
 
 PATH = os.path.dirname(sumo_rl.__file__)
 

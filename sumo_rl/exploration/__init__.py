@@ -1,1 +1,1 @@
-from sumo_rl.exploration.epsilon_greedy import EpsilonGreedy
+from .exploration.epsilon_greedy import EpsilonGreedy
