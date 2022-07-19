@@ -1,27 +1,25 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, Callable, Union
 if 'SUMO_HOME' in os.environ:
     tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
     sys.path.append(tools)
 else:
     sys.exit("Please declare the environment variable 'SUMO_HOME'")
-import traci
-import sumolib
 import gym
-from gym.envs.registration import EnvSpec
 import numpy as np
 import pandas as pd
-
-from .traffic_signal import TrafficSignal
-
+import sumolib
+import traci
+from gym.envs.registration import EnvSpec
 from gym.utils import EzPickle, seeding
 from pettingzoo import AECEnv
-from pettingzoo.utils.agent_selector import agent_selector
-from pettingzoo import AECEnv
 from pettingzoo.utils import agent_selector, wrappers
+from pettingzoo.utils.agent_selector import agent_selector
 from pettingzoo.utils.conversions import parallel_wrapper_fn
+
+from .traffic_signal import TrafficSignal
 
 LIBSUMO = 'LIBSUMO_AS_TRACI' in os.environ
 
@@ -51,6 +49,7 @@ class SumoEnvironment(gym.Env):
     :param min_green: (int) Minimum green time in a phase
     :param max_green: (int) Max green time in a phase
     :single_agent: (bool) If true, it behaves like a regular gym.Env. Else, it behaves like a MultiagentEnv (https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/multi_agent_env.py)
+    :reward_fn: (str/function) String with the name of the reward function used by the agents, or a reward function.
     :sumo_seed: (int/string) Random seed for sumo. If 'random' it uses a randomly chosen seed.
     :fixed_ts: (bool) If true, it will follow the phase configuration in the route_file and ignore the actions.
     :sumo_warnings: (bool) If False, remove SUMO warnings in the terminal
@@ -72,7 +71,8 @@ class SumoEnvironment(gym.Env):
         yellow_time: int = 2, 
         min_green: int = 5, 
         max_green: int = 50, 
-        single_agent: bool = False, 
+        single_agent: bool = False,
+        reward_fn: Union[str,Callable] = 'diff-waiting-time',
         sumo_seed: Union[str,int] = 'random', 
         fixed_ts: bool = False,
         sumo_warnings: bool = True,
@@ -98,6 +98,7 @@ class SumoEnvironment(gym.Env):
         self.max_green = max_green
         self.yellow_time = yellow_time
         self.single_agent = single_agent
+        self.reward_fn = reward_fn
         self.sumo_seed = sumo_seed
         self.fixed_ts = fixed_ts
         self.sumo_warnings = sumo_warnings
@@ -119,6 +120,7 @@ class SumoEnvironment(gym.Env):
                                                   self.min_green, 
                                                   self.max_green, 
                                                   self.begin_time,
+                                                  self.reward_fn,
                                                   conn) for ts in self.ts_ids}
         conn.close()
 
@@ -167,7 +169,9 @@ class SumoEnvironment(gym.Env):
         if self.use_gui:
             self.sumo.gui.setSchema(traci.gui.DEFAULT_VIEW, "real world")                
 
-    def reset(self, seed: Optional[int] = None, **kwargs):
+    def reset(self, seed: Optional[int] = None, return_info=False, **kwargs):
+        super().reset(seed=seed, return_info=return_info, **kwargs)
+        
         if self.run != 0:
             self.close()
             self.save_csv(self.out_csv_name, self.run)
@@ -185,11 +189,15 @@ class SumoEnvironment(gym.Env):
                                                   self.min_green, 
                                                   self.max_green, 
                                                   self.begin_time,
+                                                  self.reward_fn,
                                                   self.sumo) for ts in self.ts_ids}
         self.vehicles = dict()
 
         if self.single_agent:
-            return self._compute_observations()[self.ts_ids[0]]
+            if return_info:
+                return self._compute_observations()[self.ts_ids[0]], self._compute_info()
+            else:
+                return self._compute_observations()[self.ts_ids[0]]
         else:
             return self._compute_observations()
 
@@ -212,12 +220,12 @@ class SumoEnvironment(gym.Env):
         observations = self._compute_observations()
         rewards = self._compute_rewards()
         dones = self._compute_dones()
-        self._compute_info()
+        info = self._compute_info()
 
         if self.single_agent:
-            return observations[self.ts_ids[0]], rewards[self.ts_ids[0]], dones['__all__'], {}
+            return observations[self.ts_ids[0]], rewards[self.ts_ids[0]], dones['__all__'], info
         else:
-            return observations, rewards, dones, {}
+            return observations, rewards, dones, info
 
     def _run_steps(self):
         time_to_act = False
@@ -250,6 +258,7 @@ class SumoEnvironment(gym.Env):
     def _compute_info(self):
         info = self._compute_step_info()
         self.metrics.append(info)
+        return info
 
     def _compute_observations(self):
         self.observations.update({ts: self.traffic_signals[ts].compute_observation() for ts in self.ts_ids if self.traffic_signals[ts].time_to_act})
@@ -330,7 +339,7 @@ class SumoEnvironment(gym.Env):
 
 
 class SumoEnvironmentPZ(AECEnv, EzPickle):
-    metadata = {'render.modes': ['human', 'rgb_array'], 'name': "sumo_rl_v0"}
+    metadata = {'render.modes': ['human', 'rgb_array'], 'name': "sumo_rl_v0", 'is_parallelizable': True}
 
     def __init__(self, **kwargs):
         EzPickle.__init__(self, **kwargs)
@@ -355,8 +364,8 @@ class SumoEnvironmentPZ(AECEnv, EzPickle):
     def seed(self, seed=None):
         self.randomizer, seed = seeding.np_random(seed)
 
-    def reset(self):
-        self.env.reset()
+    def reset(self, seed: Optional[int] = None, return_info: bool = False, options: Optional[dict] = None):
+        self.env.reset(seed=seed, return_info=return_info, options=options)
         self.agents = self.possible_agents[:]
         self.agent_selection = self._agent_selector.reset()
         self.rewards = {agent: 0 for agent in self.agents}
