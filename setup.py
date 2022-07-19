@@ -11,7 +11,6 @@ setup(
     name='sumo-rl',
     packages=find_packages(),
     version='1.2',
->>>>>>> ad44e155304ae246192a3971b96156d82b99e0ed
     install_requires=REQUIRED,
     extras_require=extras,
     include_package_data=True,
