@@ -409,7 +409,7 @@ class SumoEnvironmentPZ(AECEnv, EzPickle):
             self.env._run_steps()
             self.env._compute_observations()
             self.rewards = self.env._compute_rewards()
-            self.env._compute_info()
+            self.infos["0"] = self.env._compute_info()
         else:
             self._clear_rewards()
         
